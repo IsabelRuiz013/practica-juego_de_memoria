@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Juego de Memoria</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1 class="game-title">Juego de Memoria</h1>
+  
+  <div class="game-info">
+    <div class="game-stat">
+      <div class="stat-value" id="moves">0</div>
+      <div class="stat-label">Movimientos</div>
+    </div>
+    <div class="game-stat">
+      <div class="stat-value" id="pairs-found">0</div>
+      <div class="stat-label">Pares</div>
+    </div>
+    <div class="game-stat">
+      <div class="stat-value" id="timer">0</div>
+      <div class="stat-label">Segundos</div>
+    </div>
+  </div>
+  
+  <div class="game-container">
+    <div class="memory-game" id="memory-game"></div>
+  </div>
+  
+  <div class="controls">
+    <select class="difficulty-select" id="difficulty">
+      <option value="easy">Fácil (8 pares)</option>
+      <option value="medium">Medio (10 pares)</option>
+      <option value="hard">Difícil (12 pares)</option>
+    </select>
+    <button id="start-btn">Iniciar Juego</button>
+    <button class="reset" id="reset-btn">Reiniciar</button>
+  </div>
+  
+  <div class="message-overlay" id="message-overlay">
+    <div class="message-box">
+      <h2 class="message-title" id="message-title">¡Felicidades!</h2>
+      <p class="message-content" id="message-content">Has completado el juego.</p>
+      <button id="message-btn">Aceptar</button>
+    </div>
+  </div>
+  
+  <div class="fireworks" id="fireworks"></div>
+  
+  <script>
+    // Elementos del DOM
+    const gameContainer = document.getElementById('memory-game');
+    const movesDisplay = document.getElementById('moves');
+    const pairsFoundDisplay = document.getElementById('pairs-found');
+    const timerDisplay = document.getElementById('timer');
+    const startBtn = document.getElementById('start-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const difficultySelect = document.getElementById('difficulty');
+    const messageOverlay = document.getElementById('message-overlay');
+    const messageTitle = document.getElementById('message-title');
+    const messageContent = document.getElementById('message-content');
+    const messageBtn = document.getElementById('message-btn');
+    
+    // Variables del juego
+    let cards = [];
+    let hasFlippedCard = false;
+    let lockBoard = false;
+    let firstCard, secondCard;
+    let moves = 0;
+    let pairsFound = 0;
+    let totalPairs = 8; // Predeterminado a fácil
+    let timer = 0;
+    let timerInterval;
+    let gameStarted = false;
+    
+    // Emojis para las cartas
+    const emojiSets = {
+      animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮'],
+      fruits: ['🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🥥'],
+      sports: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓']
+    };
+    
+    // Función para iniciar el juego
+    function startGame() {
+      // Reiniciar variables
+      resetGame();
+      
+      // Determinar número de pares según dificultad
+      const difficulty = difficultySelect.value;
+      switch(difficulty) {
+        case 'easy':
+          totalPairs = 8;
+          break;
+        case 'medium':
+          totalPairs = 10;
+          break;
+        case 'hard':
+          totalPairs = 12;
+          break;
+      }
+      
+      // Crear array de cartas
+      const themes = Object.keys(emojiSets);
+      const randomThemeKey = themes[Math.floor(Math.random() * themes.length)];
+      const randomTheme = emojiSets[randomThemeKey];
+      
+      // Seleccionar emojis aleatorios del tema
+      const selectedEmojis = [...randomTheme].sort(() => 0.5 - Math.random()).slice(0, totalPairs);
+      cards = [...selectedEmojis, ...selectedEmojis]; // Duplicar para crear pares
+      cards = cards.sort(() => 0.5 - Math.random()); // Mezclar
+      
+      // Ajustar el grid según el número de cartas
+      const totalCards = cards.length;
+      if (totalCards === 16) { // Fácil
+        gameContainer.style.gridTemplateColumns = 'repeat(4, 1fr)';
+      } else if (totalCards === 20) { // Medio
+        gameContainer.style.gridTemplateColumns = 'repeat(5, 1fr)';
+      } else { // Difícil
+        gameContainer.style.gridTemplateColumns = 'repeat(6, 1fr)';
+      }
+      
+      // Crear cartas en el DOM
+      gameContainer.innerHTML = '';
+      cards.forEach((emoji, index) => {
+        const card = document.createElement('div');
+        card.classList.add('memory-card');
+        card.dataset.emoji = emoji;
+        card.dataset.index = index;
+        
+        const frontFace = document.createElement('div');
+        frontFace.classList.add('front-face');
+        frontFace.textContent = emoji;
+        
+        const backFace = document.createElement('div');
+        backFace.classList.add('back-face');
+        
+        card.appendChild(frontFace);
+        card.appendChild(backFace);
+        
+        card.addEventListener('click', flipCard);
+        gameContainer.appendChild(card);
+      });
+      
+      // Iniciar el temporizador
+      startTimer();
+      gameStarted = true;
+    }
+    
+    // Función para reiniciar el juego
+    function resetGame() {
+      // Detener el temporizador
+      clearInterval(timerInterval);
+      
+      // Reiniciar variables
+      hasFlippedCard = false;
+      lockBoard = false;
+      firstCard = null;
+      secondCard = null;
+      moves = 0;
+      pairsFound = 0;
+      timer = 0;
+      
+      // Actualizar displays
+      movesDisplay.textContent = moves;
+      pairsFoundDisplay.textContent = pairsFound;
+      timerDisplay.textContent = timer;
+      
+      gameStarted = false;
+    }
+    
+    // Función para voltear carta
+    function flipCard() {
+      if (!gameStarted) return;
+      if (lockBoard) return;
+      if (this === firstCard) return;
+      if (this.classList.contains('matched')) return;
+      
+      this.classList.add('flip');
+      
+      if (!hasFlippedCard) {
+        // Primera carta volteada
+        hasFlippedCard = true;
+        firstCard = this;
+        return;
+      }
+      
+      // Segunda carta volteada
+      secondCard = this;
+      checkForMatch();
+    }
+    
+    // Verificar si hay coincidencia
+    function checkForMatch() {
+      // Incrementar movimientos
+      moves++;
+      movesDisplay.textContent = moves;
+      
+      // Comprobar coincidencia
+      const isMatch = firstCard.dataset.emoji === secondCard.dataset.emoji;
+      
+      if (isMatch) {
+        // Es coincidencia
+        disableCards();
+        pairsFound++;
+        pairsFoundDisplay.textContent = pairsFound;
+        
+        // Comprobar si el juego ha terminado
+        if (pairsFound === totalPairs) {
+          endGame();
+        }
+      } else {
+        // No es coincidencia
+        unflipCards();
+      }
+    }
+    
+    // Deshabilitar cartas coincidentes
+    function disableCards() {
+      firstCard.classList.add('matched');
+      secondCard.classList.add('matched');
+      
+      firstCard.removeEventListener('click', flipCard);
+      secondCard.removeEventListener('click', flipCard);
+      
+      resetBoard();
+    }
+    
+    // Voltear cartas de nuevo
+    function unflipCards() {
+      lockBoard = true;
+      
+      setTimeout(() => {
+        firstCard.classList.remove('flip');
+        secondCard.classList.remove('flip');
+        
+        resetBoard();
+      }, 1000);
+    }
+    
+    // Resetear variables temporales
+    function resetBoard() {
+      [hasFlippedCard, lockBoard] = [false, false];
+      [firstCard, secondCard] = [null, null];
+    }
+    
+    // Iniciar temporizador
+    function startTimer() {
+      clearInterval(timerInterval);
+      timer = 0;
+      timerDisplay.textContent = timer;
+      
+      timerInterval = setInterval(() => {
+        timer++;
+        timerDisplay.textContent = timer;
+      }, 1000);
+    }
+    
+    // Finalizar juego
+    function endGame() {
+      clearInterval(timerInterval);
+      
+      setTimeout(() => {
+        messageTitle.textContent = "¡Felicidades!";
+        messageContent.textContent = `Has completado el juego en ${moves} movimientos y ${timer} segundos.`;
+        messageOverlay.classList.add('active');
+      }, 500);
+    }
+    
+    // Event Listeners
+    startBtn.addEventListener('click', startGame);
+    resetBtn.addEventListener('click', startGame);
+    messageBtn.addEventListener('click', () => {
+      messageOverlay.classList.remove('active');
+    });
+    
+    // Iniciar el juego al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+      // Mostrar mensaje inicial
+      messageTitle.textContent = "Bienvenido al Juego de Memoria";
+      messageContent.textContent = "Encuentra todos los pares de cartas en el menor número de movimientos posible.";
+      messageOverlay.classList.add('active');
+    });
+  </script>
+</body>
+</html>
